@@ -1,31 +1,16 @@
 import theano
 import theano.tensor as T
 
-import gym
-
 import numpy as np
-import matplotlib.pyplot as plt
 
-from six.moves import cPickle
+import globals 
+from utils import fc_init_he, shared, RMSprop, huber_loss
 
 # constants
-floatX = np.float64
+floatX = globals.globals['floatX']
 small = 1e-7
 
 # MODEL
-def conv_weight_he(o, i, w, h):
-    w = (2 * np.random.randn(o, i, w, h) / (i * w * h)).astype(floatX)
-
-    return theano.shared(w)
-
-def fc_init_he(i, o):
-    w = (2 * np.random.randn(i, o) / (i)).astype(floatX)
-
-    return theano.shared(w)
-
-def shared(x):
-    return theano.shared(x.astype(floatX))
-
 class DQN:
     def __init__(self, network, memory_cap = 50000, epsilon_start = 1, epsilon_end = 0.1, epsilon_decay = 0.00001, discount = 0.99):
         self.network = network
@@ -41,7 +26,7 @@ class DQN:
 
         self.get_Q = self.network.get_Q
 
-    def step(self, env, observation, keep_in_memory = True):
+    def step(self, env, observation, preprocess, keep_in_memory = True):
         rand = np.random.uniform()
 
         if (rand < self.epsilon):
@@ -169,80 +154,3 @@ class Approximator:
     def get_weights(self):
         return [self.weights['fc1'], self.weights['fc2'], self.weights['fc3']]
 
-def RMSprop(cost, params, lr=0.001, rho=0.9, epsilon=1e-6):
-    grads = T.grad(cost=cost, wrt=params)
-    updates = []
-    for p, g in zip(params, grads):
-        acc = theano.shared(p.get_value() * 0.)
-        acc_new = rho * acc + (1 - rho) * g ** 2
-        gradient_scaling = T.sqrt(acc_new + epsilon)
-        g = g / gradient_scaling
-        updates.append((acc, acc_new))
-        updates.append((p, p - lr * g))
-    return updates
-
-def huber_loss(target, output, delta = 0.1):
-    d = target - output
-
-    l1 = (d ** 2)/2.
-    l2 = delta * (abs(d) - delta / 2.)
-
-    lf = T.switch(abs(d) <= delta, l1, l2)
-
-    return lf.sum()
-
-def preprocess(observation):
-    return np.expand_dims(observation, axis = 0)
-
-def main():
-    target = Approximator(observation_type = T.matrix())
-    approximator = Approximator(observation_type = T.matrix())
-    dqn = DQN(network = approximator)
-
-    env = gym.make("LunarLander-v2")
-
-    # Initialize target approximator with current
-    dqn.copy_weights(target)
-
-    total_ts = 0
-
-    episodes = 100000
-    for episode in range (episodes):
-        done = False
-        ts = 0
-        r = 0
-
-        observation = preprocess(env.reset())
-        while not done and ts < 5000:
-            (observation, reward, done, info), _ = dqn.step(env, observation)
-            observation = preprocess(observation)
-
-            r += reward
-
-            if episode % 10 == 0:
-                env.render()
-
-            if total_ts % 1000 == 0:
-                # Update target network
-                #print(target.get_weights()[0].get_value())
-                dqn.copy_weights(target)
-                #print(target.get_weights()[0].get_value())
-
-            if total_ts % 10000 == 0:
-                print("SAVING WEIGHTS")
-                weight = open("dqn_lunarlander" + str(total_ts) + ".w", 'wb')
-                for w in dqn.network.get_weights():
-                    cPickle.dump(w, weight, protocol = cPickle.HIGHEST_PROTOCOL)
-
-                weight.close()
-
-            if (len(dqn.memory) > 2000 and total_ts % 5 == 0):
-                dqn.train(target)
-
-            total_ts += 1
-            ts += 1
-
-        print("Reward: " + str(r) + " | Epsilon: " + str(dqn.epsilon))
-
-if __name__ == "__main__":
-    main()
