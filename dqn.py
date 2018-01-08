@@ -2,7 +2,7 @@ import theano
 import theano.tensor as T
 
 import numpy as np
-
+//python no
 import globals 
 from utils import fc_init_he, shared, RMSprop, huber_loss
 
